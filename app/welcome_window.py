@@ -1,6 +1,8 @@
 """First-launch welcome screen on a native glass window, with an entrance
 animation that staggers the content into view."""
 
+import sys
+
 from PyQt6.QtCore import (
     QEasingCurve,
     QParallelAnimationGroup,
@@ -104,11 +106,18 @@ class WelcomeWindow(GlassWindow):
         v.addWidget(start)
         self._anim_targets.append(start)
 
-        # start every target hidden; showEvent kicks off the staggered reveal
-        for widget in self._anim_targets:
-            effect = QGraphicsOpacityEffect(widget)
-            effect.setOpacity(0.0)
-            widget.setGraphicsEffect(effect)
+        # The staggered reveal uses QGraphicsOpacityEffect + a position
+        # animation. On Windows' translucent Mica window that combination
+        # ghosts -- the vacated widget regions are never cleared, leaving
+        # vertical smears -- so the entrance animation is macOS-only. On
+        # Windows the content just appears at full opacity.
+        self._animate_enabled = sys.platform == "darwin"
+        if self._animate_enabled:
+            # start every target hidden; showEvent kicks off the reveal
+            for widget in self._anim_targets:
+                effect = QGraphicsOpacityEffect(widget)
+                effect.setOpacity(0.0)
+                widget.setGraphicsEffect(effect)
 
         self.body.addWidget(content)
 
@@ -117,8 +126,9 @@ class WelcomeWindow(GlassWindow):
         super().showEvent(event)
         if not self._animated:
             self._animated = True
-            # wait for the glass + layout to settle, then reveal
-            QTimer.singleShot(120, self._animate_in)
+            if self._animate_enabled:
+                # wait for the glass + layout to settle, then reveal
+                QTimer.singleShot(120, self._animate_in)
 
     def _animate_in(self) -> None:
         for index, widget in enumerate(self._anim_targets):
