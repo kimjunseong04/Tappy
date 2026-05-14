@@ -22,7 +22,7 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import QFrame, QMainWindow, QVBoxLayout, QWidget
 
-from .ui_style import DIVIDER, SWITCH_ON
+from .ui_style import SWITCH_ON, colors
 
 
 def _lerp(c1: QColor, c2: QColor, t: float) -> QColor:
@@ -176,5 +176,5 @@ class ToggleSwitch(QWidget):
 def divider() -> QFrame:
     line = QFrame()
     line.setFixedHeight(1)
-    line.setStyleSheet(f"background: {DIVIDER}; border: none;")
+    line.setStyleSheet(f"background: {colors()['divider']}; border: none;")
     return line

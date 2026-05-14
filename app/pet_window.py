@@ -31,7 +31,9 @@ class PetWindow(QWidget):
         # window hides itself whenever another app is focused, which would
         # defeat the whole point, so we leave it as a plain window there.
         if sys.platform == "win32":
-            flags |= Qt.WindowType.Tool
+            # NoDropShadow stops Windows drawing a rectangular shadow around
+            # the *window* rather than the visible character pixels.
+            flags |= Qt.WindowType.Tool | Qt.WindowType.NoDropShadowWindowHint
         self.setWindowFlags(flags)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -44,6 +46,33 @@ class PetWindow(QWidget):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._next_frame)
         self._timer.start(int(1000 / self._fps))
+
+    # ---- window chrome ----
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._strip_windows_border()
+
+    def _strip_windows_border(self) -> None:
+        """Drop the 1px DWM border Windows 11 paints even on frameless windows.
+
+        Setting the DWM border colour to "none" leaves only the character
+        pixels visible. No-op on macOS / if the call fails.
+        """
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+
+            DWMWA_BORDER_COLOR = 34
+            DWMWA_COLOR_NONE = 0xFFFFFFFE
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                int(self.winId()),
+                DWMWA_BORDER_COLOR,
+                ctypes.byref(ctypes.c_uint(DWMWA_COLOR_NONE)),
+                ctypes.sizeof(ctypes.c_uint),
+            )
+        except Exception:
+            pass
 
     # ---- character ----
     def set_character(self, character: Character) -> None:

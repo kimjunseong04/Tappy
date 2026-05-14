@@ -46,7 +46,11 @@ def macos_accessibility_trusted() -> bool:
 
 
 class KeyboardMonitor:
-    def __init__(self, window_seconds: float = 2.0):
+    # A 1s window keeps `recent_rate()` responsive: a longer window divides the
+    # keystroke count by more seconds, so a burst of fast typing only reads as
+    # its true rate after the whole window fills -- that lag is what made the
+    # character feel slow to react.
+    def __init__(self, window_seconds: float = 1.0):
         self._window = window_seconds
         self._lock = threading.Lock()
         self._timestamps: deque[float] = deque()
