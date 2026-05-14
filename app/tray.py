@@ -1,4 +1,4 @@
-"""System tray icon: a quick menu plus click-to-open-settings."""
+"""시스템 트레이 아이콘: 빠른 메뉴와 클릭으로 설정 열기."""
 
 from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
@@ -18,7 +18,7 @@ class Tray:
         quit_action.triggered.connect(on_quit)
         menu.addAction(quit_action)
 
-        self._menu = menu  # keep a reference; the tray icon does not own it
+        self._menu = menu  # 참조 유지; 트레이 아이콘이 메뉴를 소유하지 않는다
         self._tray.setContextMenu(menu)
         self._tray.activated.connect(
             lambda reason: on_open_settings()

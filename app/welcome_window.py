@@ -1,5 +1,4 @@
-"""First-launch welcome screen on a native glass window, with an entrance
-animation that staggers the content into view."""
+"""첫 실행 환영 화면. 네이티브 유리 창 위에 콘텐츠를 순차적으로 나타내는 입장 애니메이션 포함."""
 
 import sys
 
@@ -24,7 +23,7 @@ from PyQt6.QtWidgets import (
 
 from .paths import assets_dir
 from .ui_style import content_bg
-from .widgets import GlassWindow
+from .widgets import GlassWindow, PermissionCard
 
 _FEATURES = [
     ("⌨️", "타이핑 속도에 반응", "치는 속도에 맞춰 애니메이션이 빨라져요"),
@@ -38,24 +37,25 @@ class WelcomeWindow(GlassWindow):
         self,
         *,
         on_get_started,
-        on_open_accessibility,
+        on_request_permission,
         needs_permission: bool,
     ):
         super().__init__("Tappy")
-        self.setFixedSize(460, 640 if needs_permission else 560)
+        self.setFixedSize(460, 648 if needs_permission else 560)
         self._on_get_started = on_get_started
         self._dismissed = False
         self._animated = False
         self._anims: list[QParallelAnimationGroup] = []
+        self._perm_card: PermissionCard | None = None
 
         content = QWidget()
-        # Opaque on Windows -- a transparent child on the Mica window leaves
-        # ghost trails when widgets repaint/move; transparent on macOS so the
-        # glass shows through. See ui_style.content_bg.
+        # Windows에서는 불투명하게 설정 -- Mica 창의 투명 자식 위젯은
+        # 위젯 재페인트/이동 시 잔상이 남는다. macOS에서는 유리가 비쳐 보이도록 투명 유지.
+        # ui_style.content_bg 참고.
         content.setStyleSheet(f"background: {content_bg()};")
         v = QVBoxLayout(content)
-        # top margin clears the window controls (overlaid on macOS)
-        v.setContentsMargins(40, self.titlebar_clearance() + 4, 40, 32)
+        # 상단 여백으로 macOS의 창 컨트롤(트래픽 라이트)을 가리지 않게 한다
+        v.setContentsMargins(40, self.titlebar_clearance() + 6, 40, 30)
         v.setSpacing(0)
 
         logo = QLabel()
@@ -63,14 +63,14 @@ class WelcomeWindow(GlassWindow):
         pixmap = QPixmap(str(assets_dir() / "tappy_logo.png"))
         logo.setPixmap(
             pixmap.scaled(
-                116,
-                116,
+                108,
+                108,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
         )
         v.addWidget(logo, 0, Qt.AlignmentFlag.AlignHCenter)
-        v.addSpacing(16)
+        v.addSpacing(14)
 
         title = QLabel("Tappy")
         title.setProperty("klass", "hero")
@@ -82,42 +82,50 @@ class WelcomeWindow(GlassWindow):
         subtitle.setProperty("klass", "subtitle")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         v.addWidget(subtitle)
-        v.addSpacing(26)
+        v.addSpacing(28)
 
-        # widgets the entrance animation staggers into view, in order
+        # 입장 애니메이션이 순서대로 나타낼 위젯들
         self._anim_targets: list[QWidget] = [logo, title, subtitle]
 
-        for emoji, head, sub in _FEATURES:
-            row = self._feature_row(emoji, head, sub)
-            self._anim_targets.append(row)
-            v.addWidget(row)
-            v.addSpacing(14)
+        feature_card = QFrame()
+        feature_card.setProperty("klass", "card")
+        fc = QVBoxLayout(feature_card)
+        fc.setContentsMargins(18, 6, 18, 6)
+        fc.setSpacing(0)
+        for index, (emoji, head, sub) in enumerate(_FEATURES):
+            if index:
+                line = QFrame()
+                line.setFixedHeight(1)
+                line.setStyleSheet("background: rgba(128,128,128,0.16);")
+                fc.addWidget(line)
+            fc.addWidget(self._feature_row(emoji, head, sub))
+        self._anim_targets.append(feature_card)
+        v.addWidget(feature_card)
 
         if needs_permission:
-            v.addSpacing(4)
-            perm_card = self._permission_card(on_open_accessibility)
-            self._anim_targets.append(perm_card)
-            v.addWidget(perm_card)
+            v.addSpacing(14)
+            self._perm_card = PermissionCard(on_request_permission)
+            self._anim_targets.append(self._perm_card)
+            v.addWidget(self._perm_card)
 
         v.addStretch(1)
-        v.addSpacing(20)  # keep the button clear of the content above it
+        v.addSpacing(22)  # 버튼이 위 콘텐츠와 충분히 떨어지도록 간격 확보
 
         start = QPushButton("시작하기")
         start.setProperty("klass", "primary")
         start.setCursor(Qt.CursorShape.PointingHandCursor)
-        start.setFixedHeight(36)
+        start.setFixedHeight(38)
         start.clicked.connect(self.close)
         v.addWidget(start)
         self._anim_targets.append(start)
 
-        # The staggered reveal uses QGraphicsOpacityEffect + a position
-        # animation. On Windows' translucent Mica window that combination
-        # ghosts -- the vacated widget regions are never cleared, leaving
-        # vertical smears -- so the entrance animation is macOS-only. On
-        # Windows the content just appears at full opacity.
+        # 순차 나타내기는 QGraphicsOpacityEffect + 위치 애니메이션을 사용한다.
+        # Windows의 반투명 Mica 창에서는 이 조합이 잔상을 남긴다 --
+        # 비워진 위젯 영역이 지워지지 않아 세로 얼룩이 생긴다 --
+        # 따라서 입장 애니메이션은 macOS 전용이다. Windows에서는 콘텐츠가 바로 표시된다.
         self._animate_enabled = sys.platform == "darwin"
         if self._animate_enabled:
-            # start every target hidden; showEvent kicks off the reveal
+            # 모든 대상을 숨긴 상태로 시작; showEvent에서 나타내기 시작
             for widget in self._anim_targets:
                 effect = QGraphicsOpacityEffect(widget)
                 effect.setOpacity(0.0)
@@ -125,13 +133,19 @@ class WelcomeWindow(GlassWindow):
 
         self.body.addWidget(content)
 
-    # ---- entrance animation ----
+    # ---- 실시간 권한 업데이트 ----
+    def refresh_permission(self) -> None:
+        """컨트롤러가 권한이 실시간으로 허용됐을 때 호출한다."""
+        if self._perm_card is not None:
+            self._perm_card.set_granted(True)
+
+    # ---- 입장 애니메이션 ----
     def showEvent(self, event) -> None:
         super().showEvent(event)
         if not self._animated:
             self._animated = True
             if self._animate_enabled:
-                # wait for the glass + layout to settle, then reveal
+                # 유리 + 레이아웃이 안정된 후 나타내기 시작
                 QTimer.singleShot(120, self._animate_in)
 
     def _animate_in(self) -> None:
@@ -159,11 +173,11 @@ class WelcomeWindow(GlassWindow):
             self._anims.append(group)
             QTimer.singleShot(index * 65, group.start)
 
-    # ---- pieces ----
+    # ---- 구성 요소 ----
     def _feature_row(self, emoji: str, head: str, sub: str) -> QWidget:
         row = QWidget()
         h = QHBoxLayout(row)
-        h.setContentsMargins(0, 0, 0, 0)
+        h.setContentsMargins(0, 13, 0, 13)
         h.setSpacing(14)
 
         icon = QLabel(emoji)
@@ -184,39 +198,7 @@ class WelcomeWindow(GlassWindow):
         h.addStretch(1)
         return row
 
-    def _permission_card(self, on_open) -> QFrame:
-        card = QFrame()
-        card.setObjectName("permcard")
-        card.setStyleSheet(
-            "#permcard { background: rgba(255,159,10,0.16);"
-            " border: 1px solid rgba(255,159,10,0.4); border-radius: 12px; }"
-        )
-        h = QHBoxLayout(card)
-        h.setContentsMargins(14, 12, 12, 12)
-        h.setSpacing(11)
-
-        icon = QLabel("⚠️")
-        icon.setStyleSheet("font-size: 17px;")
-        h.addWidget(icon, 0, Qt.AlignmentFlag.AlignTop)
-
-        text = QVBoxLayout()
-        text.setSpacing(3)
-        head = QLabel("키 입력 권한이 필요해요")
-        head.setProperty("klass", "title")
-        sub = QLabel("시스템 설정 › 손쉬운 사용에서 권한을 허용한 뒤\n앱을 다시 실행하세요.")
-        sub.setProperty("klass", "rowsub")
-        text.addWidget(head)
-        text.addWidget(sub)
-        h.addLayout(text)
-        h.addStretch(1)
-
-        button = QPushButton("열기")
-        button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.clicked.connect(on_open)
-        h.addWidget(button, 0, Qt.AlignmentFlag.AlignVCenter)
-        return card
-
-    # ---- closing also counts as "get started" ----
+    # ---- 닫기도 "시작하기"로 처리 ----
     def closeEvent(self, event) -> None:
         if not self._dismissed:
             self._dismissed = True
