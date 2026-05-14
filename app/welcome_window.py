@@ -1,6 +1,8 @@
 """First-launch welcome screen on a native glass window, with an entrance
 animation that staggers the content into view."""
 
+import sys
+
 from PyQt6.QtCore import (
     QEasingCurve,
     QParallelAnimationGroup,
@@ -21,6 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .paths import assets_dir
+from .ui_style import content_bg
 from .widgets import GlassWindow
 
 _FEATURES = [
@@ -46,7 +49,10 @@ class WelcomeWindow(GlassWindow):
         self._anims: list[QParallelAnimationGroup] = []
 
         content = QWidget()
-        content.setStyleSheet("background: transparent;")
+        # Opaque on Windows -- a transparent child on the Mica window leaves
+        # ghost trails when widgets repaint/move; transparent on macOS so the
+        # glass shows through. See ui_style.content_bg.
+        content.setStyleSheet(f"background: {content_bg()};")
         v = QVBoxLayout(content)
         # top margin clears the window controls (overlaid on macOS)
         v.setContentsMargins(40, self.titlebar_clearance() + 4, 40, 32)
@@ -104,11 +110,18 @@ class WelcomeWindow(GlassWindow):
         v.addWidget(start)
         self._anim_targets.append(start)
 
-        # start every target hidden; showEvent kicks off the staggered reveal
-        for widget in self._anim_targets:
-            effect = QGraphicsOpacityEffect(widget)
-            effect.setOpacity(0.0)
-            widget.setGraphicsEffect(effect)
+        # The staggered reveal uses QGraphicsOpacityEffect + a position
+        # animation. On Windows' translucent Mica window that combination
+        # ghosts -- the vacated widget regions are never cleared, leaving
+        # vertical smears -- so the entrance animation is macOS-only. On
+        # Windows the content just appears at full opacity.
+        self._animate_enabled = sys.platform == "darwin"
+        if self._animate_enabled:
+            # start every target hidden; showEvent kicks off the reveal
+            for widget in self._anim_targets:
+                effect = QGraphicsOpacityEffect(widget)
+                effect.setOpacity(0.0)
+                widget.setGraphicsEffect(effect)
 
         self.body.addWidget(content)
 
@@ -117,8 +130,9 @@ class WelcomeWindow(GlassWindow):
         super().showEvent(event)
         if not self._animated:
             self._animated = True
-            # wait for the glass + layout to settle, then reveal
-            QTimer.singleShot(120, self._animate_in)
+            if self._animate_enabled:
+                # wait for the glass + layout to settle, then reveal
+                QTimer.singleShot(120, self._animate_in)
 
     def _animate_in(self) -> None:
         for index, widget in enumerate(self._anim_targets):

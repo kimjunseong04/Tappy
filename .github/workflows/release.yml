@@ -72,6 +72,33 @@ jobs:
     needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # need full history + tags to build the notes
+      - name: Generate release notes
+        run: |
+          version="${{ needs.prepare.outputs.version }}"
+          # Most recent existing release tag (the new v$version isn't created
+          # until the release step below, so this resolves to the previous one).
+          prev="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+          {
+            if [ -n "$prev" ]; then
+              echo "### $prev 이후 변경사항"
+              range="$prev..HEAD"
+            else
+              echo "### 변경사항"
+              range="HEAD"
+            fi
+            echo
+            git log "$range" --no-merges --pretty=format:'- %s'
+            if [ -n "$prev" ]; then
+              echo
+              echo
+              echo "**전체 변경 내역**: \`$prev...v$version\`"
+            fi
+          } > notes.md
+          echo "----- release notes -----"
+          cat notes.md
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -79,6 +106,6 @@ jobs:
         with:
           tag_name: v${{ needs.prepare.outputs.version }}
           name: Tappy v${{ needs.prepare.outputs.version }}
+          body_path: notes.md
           files: artifacts/**/*.zip
-          generate_release_notes: true
           fail_on_unmatched_files: true

@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QFontMetrics, QPixmap
 from PyQt6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .keyboard_monitor import macos_accessibility_trusted, open_accessibility_settings
-from .ui_style import ACCENT, DANGER, SWITCH_ON, WARNING
+from .ui_style import ACCENT, DANGER, SWITCH_ON, WARNING, colors, content_bg
 from .widgets import GlassWindow, ToggleSwitch, divider
 
 _FILE_FILTER = "이미지 (*.gif *.png *.webp *.jpg *.jpeg *.bmp)"
@@ -51,16 +51,18 @@ def _character_card(
 ) -> _ClickCard:
     card = _ClickCard()
     card.setObjectName("charCard")
+    c = colors()
     if selected:
         card.setStyleSheet(
             "#charCard { border: 2px solid %s; border-radius: 16px;"
-            " background: rgba(0,122,255,0.12); }" % ACCENT
+            " background: %s; }" % (ACCENT, c["tile_selected_bg"])
         )
     else:
         card.setStyleSheet(
-            "#charCard { border: 1px solid rgba(255,255,255,0.5);"
-            " border-radius: 16px; background: rgba(255,255,255,0.32); }"
-            "#charCard:hover { background: rgba(255,255,255,0.5); }"
+            "#charCard { border: 1px solid %s;"
+            " border-radius: 16px; background: %s; }"
+            "#charCard:hover { background: %s; }"
+            % (c["tile_border"], c["tile_bg"], c["tile_hover"])
         )
     lay = QVBoxLayout(card)
     lay.setContentsMargins(6, 10, 6, 8)
@@ -79,9 +81,14 @@ def _character_card(
     )
     lay.addWidget(thumb, 0, Qt.AlignmentFlag.AlignHCenter)
 
-    name = QLabel(char_id)
-    name.setProperty("klass", "rowsub")
+    name = QLabel()
+    name.setProperty("klass", "cardname")
     name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    # The card is a fixed 98px wide -- middle-elide long ids so they don't
+    # spill past the edges; the full name stays available as a tooltip.
+    name.setText(QFontMetrics(name.font()).elidedText(
+        char_id, Qt.TextElideMode.ElideMiddle, 84))
+    name.setToolTip(char_id)
     lay.addWidget(name)
 
     if deletable:
@@ -108,17 +115,19 @@ def _character_card(
 def _upload_card() -> _ClickCard:
     card = _ClickCard()
     card.setObjectName("uploadCard")
+    c = colors()
     card.setStyleSheet(
-        "#uploadCard { border: 1px dashed rgba(120,120,128,0.55);"
-        " border-radius: 16px; background: rgba(255,255,255,0.20); }"
-        "#uploadCard:hover { background: rgba(255,255,255,0.42); }"
+        "#uploadCard { border: 1px dashed %s;"
+        " border-radius: 16px; background: %s; }"
+        "#uploadCard:hover { background: %s; }"
+        % (c["upload_border"], c["upload_bg"], c["upload_hover"])
     )
     lay = QVBoxLayout(card)
     lay.setContentsMargins(6, 10, 6, 8)
     lay.setSpacing(5)
 
     plus = QLabel("＋")
-    plus.setStyleSheet("font-size: 28px; color: #86868B;")
+    plus.setStyleSheet(f"font-size: 28px; color: {c['text_secondary']};")
     plus.setAlignment(Qt.AlignmentFlag.AlignCenter)
     plus.setFixedHeight(64)
     lay.addWidget(plus)
@@ -152,14 +161,19 @@ class SettingsWindow(GlassWindow):
             titlebar.setFixedHeight(self.titlebar_clearance())
         self.body.addWidget(titlebar)
 
+        # On Windows the viewport/content must be opaque, not transparent --
+        # a transparent child on the Mica window leaves ghost trails when the
+        # scroll area blits on scroll. content_bg() resolves this per platform.
+        bg = content_bg()
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.viewport().setStyleSheet("background: transparent;")
+        scroll.viewport().setStyleSheet(f"background: {bg};")
 
         content = QWidget()
-        content.setStyleSheet("background: transparent;")
+        content.setStyleSheet(f"background: {bg};")
         v = QVBoxLayout(content)
         v.setContentsMargins(24, 2, 24, 22)
         v.setSpacing(20)
