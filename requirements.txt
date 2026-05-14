@@ -1,0 +1,5 @@
+PyQt6
+pynput
+Pillow
+pyqt-liquidglass; sys_platform == "darwin"
+win32mica; sys_platform == "win32"
