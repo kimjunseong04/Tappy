@@ -8,6 +8,8 @@ glass window. ``colors()`` resolves them at call time -- it needs a running
 QApplication, so it cannot be done at import time.
 """
 
+import sys
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QGuiApplication
 
@@ -19,6 +21,8 @@ WARNING = "#FF9F0A"
 
 _LIGHT = {
     "text_secondary": "#86868B",
+    # Opaque content background, used on Windows only (see content_bg).
+    "window_bg": "#F3F3F3",
     "divider": "rgba(60,60,67,0.16)",
     "card_bg": "rgba(255,255,255,0.42)",
     "card_border": "rgba(255,255,255,0.55)",
@@ -33,6 +37,7 @@ _LIGHT = {
 
 _DARK = {
     "text_secondary": "#AEAEB2",
+    "window_bg": "#202020",
     "divider": "rgba(255,255,255,0.14)",
     "card_bg": "rgba(255,255,255,0.07)",
     "card_border": "rgba(255,255,255,0.14)",
@@ -60,6 +65,21 @@ def is_dark() -> bool:
 def colors() -> dict[str, str]:
     """Appearance-dependent colours for the current system theme."""
     return _DARK if is_dark() else _LIGHT
+
+
+def content_bg() -> str:
+    """Background for content layered on the window backdrop.
+
+    Transparent everywhere except Windows. On a Windows Mica window (which
+    sets ``WA_TranslucentBackground``), a child with ``background: transparent``
+    never clears its stale pixels on a partial repaint -- a scroll-area blit or
+    a moved widget leaves ghost trails. An opaque background gives Qt a surface
+    to clear against. macOS Liquid Glass composites natively, so it stays
+    transparent there and the glass shows through.
+    """
+    if sys.platform == "win32":
+        return colors()["window_bg"]
+    return "transparent"
 
 
 def stylesheet() -> str:
