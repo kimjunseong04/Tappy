@@ -1,4 +1,4 @@
-"""Discovers bundled and user-uploaded characters, and imports new ones."""
+"""번들 캐릭터와 사용자가 업로드한 캐릭터를 탐색하고, 새 캐릭터를 임포트한다."""
 
 import shutil
 from pathlib import Path
@@ -15,7 +15,7 @@ class CharacterManager:
         self._cache: dict[str, Character] = {}
 
     def _dirs(self) -> dict[str, Path]:
-        """Map character id -> directory. User characters override bundled."""
+        """캐릭터 id → 디렉터리 매핑을 반환한다. 사용자 캐릭터가 번들 캐릭터를 덮어쓴다."""
         result: dict[str, Path] = {}
         for base in (bundled_characters_dir(), user_characters_dir()):
             if not base.is_dir():
@@ -50,11 +50,11 @@ class CharacterManager:
         return char
 
     def import_gif(self, file_path: Path) -> str:
-        """Add a character by splitting an image into a PNG frame sequence.
+        """이미지를 PNG 프레임 시퀀스로 분할해 캐릭터를 추가한다.
 
-        The chosen GIF/WebP is decoded frame-by-frame into ``frame_NNNN.png``
-        files in a new folder under the user characters directory; static
-        images become a single-frame character. Returns the new id.
+        선택한 GIF/WebP를 프레임별로 디코딩해 사용자 캐릭터 디렉터리 내 새 폴더에
+        ``frame_NNNN.png`` 파일로 저장한다. 정적 이미지는 단일 프레임 캐릭터가 된다.
+        새 id를 반환한다.
         """
         name = file_path.stem.strip() or "character"
         dest_dir = user_characters_dir() / name
@@ -72,9 +72,9 @@ class CharacterManager:
         return dest_dir.name
 
     def is_user_character(self, char_id: str) -> bool:
-        """Whether this character was uploaded by the user (and so deletable).
+        """사용자가 업로드한 캐릭터인지 (따라서 삭제 가능한지) 반환한다.
 
-        Bundled characters live under ``assets/`` and cannot be deleted.
+        번들 캐릭터는 ``assets/`` 아래에 있으며 삭제할 수 없다.
         """
         directory = self._dirs().get(char_id)
         if directory is None:
@@ -86,7 +86,7 @@ class CharacterManager:
             return False
 
     def delete_character(self, char_id: str) -> bool:
-        """Delete a user-uploaded character. Returns False for bundled ones."""
+        """사용자가 업로드한 캐릭터를 삭제한다. 번들 캐릭터에는 False를 반환한다."""
         if not self.is_user_character(char_id):
             return False
         directory = self._dirs().get(char_id)
@@ -98,12 +98,11 @@ class CharacterManager:
 
 
 def ensure_default_character() -> None:
-    """Make sure a 'default' character exists, generating a placeholder if not.
+    """'default' 캐릭터가 없으면 플레이스홀더를 생성해 항상 존재하게 한다.
 
-    Normally the bundled ``assets/characters/default/`` ships with the app. If
-    it is missing (e.g. a build that did not include the assets folder, where
-    the resource dir is also read-only), the placeholder is generated into the
-    writable user data directory instead.
+    일반적으로 번들 ``assets/characters/default/``가 앱에 포함된다.
+    없는 경우(에셋 폴더가 누락된 빌드, 또는 리소스 디렉터리가 읽기 전용인 경우)
+    플레이스홀더를 쓰기 가능한 사용자 데이터 디렉터리에 생성한다.
     """
     bundled = bundled_characters_dir() / "default"
     if bundled.is_dir() and any(bundled.iterdir()):
@@ -120,7 +119,7 @@ def ensure_default_character() -> None:
 
 
 def _generate_placeholder_frames(out_dir: Path) -> None:
-    """A simple bouncing blob, saved as a transparent PNG sequence."""
+    """투명 PNG 시퀀스로 저장되는 단순한 통통 튀기는 블롭."""
     size = 96
     total = 8
     for i in range(total):
