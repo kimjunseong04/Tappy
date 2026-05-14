@@ -19,7 +19,7 @@ from app.pet_window import PetWindow
 from app.settings_window import SettingsWindow
 from app.speed_model import SpeedModel
 from app.tray import Tray
-from app.ui_style import STYLESHEET
+from app.ui_style import stylesheet
 from app.welcome_window import WelcomeWindow
 
 POLL_INTERVAL_MS = 80
@@ -166,7 +166,7 @@ class TappyApp:
 def main() -> int:
     qapp = QApplication(sys.argv)
     qapp.setQuitOnLastWindowClosed(False)
-    qapp.setStyleSheet(STYLESHEET)
+    qapp.setStyleSheet(stylesheet())
     # App/Dock/taskbar icon when running from source (a built app/exe gets its
     # icon from Tappy.spec instead).
     logo = assets_dir() / "tappy_logo.png"
