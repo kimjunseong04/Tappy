@@ -1,8 +1,8 @@
-"""The always-on-top, frameless, transparent character window."""
+"""항상 최상위에 표시되는 프레임리스 투명 캐릭터 창."""
 
 import sys
 
-from PyQt6.QtCore import QPoint, Qt, QTimer
+from PyQt6.QtCore import QPoint, QRect, Qt, QTimer
 from PyQt6.QtGui import QPainter
 from PyQt6.QtWidgets import QApplication, QWidget
 
@@ -11,6 +11,9 @@ from .config import Config
 
 MIN_SCALE = 0.4
 MAX_SCALE = 3.0
+# 드래그 해제 시 펫의 가장자리가 화면 가장자리에 이 픽셀 이내로 떨어지면
+# 화면 끝에 딱 붙인다 -- 펫이 모서리에 깔끔하게 자리잡는다.
+SNAP_THRESHOLD = 28
 
 
 class PetWindow(QWidget):
@@ -27,17 +30,19 @@ class PetWindow(QWidget):
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
         )
-        # On Windows, Tool keeps the pet out of the taskbar. On macOS a Tool
-        # window hides itself whenever another app is focused, which would
-        # defeat the whole point, so we leave it as a plain window there.
+        # Windows에서는 Tool로 펫을 태스크바에서 제외한다. macOS에서 Tool 창은
+        # 다른 앱이 포커스를 가지면 숨겨지므로 (본래 목적에 반함) 일반 창으로 둔다.
         if sys.platform == "win32":
-            # NoDropShadow stops Windows drawing a rectangular shadow around
-            # the *window* rather than the visible character pixels.
+            # NoDropShadow는 Windows가 캐릭터 픽셀이 아닌 *창* 주위에
+            # 사각형 그림자를 그리는 것을 방지한다.
             flags |= Qt.WindowType.Tool | Qt.WindowType.NoDropShadowWindowHint
         self.setWindowFlags(flags)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(lambda _pos: self._on_right_click())
+        # 열린 손 커서로 펫을 드래그할 수 있음을 알린다; 드래그 중에는 닫힌 손으로 바뀐다.
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.setToolTip("드래그로 이동 · 더블클릭으로 설정 · 휠로 크기 조절")
 
         self._apply_character_size()
         self._restore_position()
@@ -47,16 +52,16 @@ class PetWindow(QWidget):
         self._timer.timeout.connect(self._next_frame)
         self._timer.start(int(1000 / self._fps))
 
-    # ---- window chrome ----
+    # ---- 창 외형 ----
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._strip_windows_border()
 
     def _strip_windows_border(self) -> None:
-        """Drop the 1px DWM border Windows 11 paints even on frameless windows.
+        """Windows 11이 프레임리스 창에도 그리는 1px DWM 테두리를 제거한다.
 
-        Setting the DWM border colour to "none" leaves only the character
-        pixels visible. No-op on macOS / if the call fails.
+        DWM 테두리 색상을 "없음"으로 설정하면 캐릭터 픽셀만 보인다.
+        macOS 또는 호출 실패 시 무작동.
         """
         if sys.platform != "win32":
             return
@@ -74,7 +79,7 @@ class PetWindow(QWidget):
         except Exception:
             pass
 
-    # ---- character ----
+    # ---- 캐릭터 ----
     def set_character(self, character: Character) -> None:
         self._character = character
         self._frame_index = 0
@@ -88,9 +93,9 @@ class PetWindow(QWidget):
             max(1, round(base.height() * self._scale)),
         )
 
-    # ---- size ----
+    # ---- 크기 ----
     def set_scale(self, scale: float) -> None:
-        """Resize the pet in real time, keeping it centred on its old centre."""
+        """실시간으로 펫 크기를 조절하며 이전 중심점을 유지한다."""
         scale = _clamp_scale(scale)
         if abs(scale - self._scale) < 0.001:
             return
@@ -110,10 +115,10 @@ class PetWindow(QWidget):
     def wheelEvent(self, event) -> None:
         delta = event.angleDelta().y()
         if delta:
-            # ~18% per notch (one notch == 120 units)
+            # 노치당 약 18% (한 노치 == 120 유닛)
             self.set_scale(self._scale * (1.0 + 0.0015 * delta))
 
-    # ---- playback ----
+    # ---- 재생 ----
     def set_fps(self, fps: float) -> None:
         fps = max(0.5, fps)
         if abs(fps - self._fps) < 0.1:
@@ -130,18 +135,51 @@ class PetWindow(QWidget):
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         painter.drawPixmap(self.rect(), self._character.frames[self._frame_index])
 
-    # ---- position ----
+    # ---- 위치 ----
     def _restore_position(self) -> None:
-        if self._config.window_x is not None and self._config.window_y is not None:
-            self.move(self._config.window_x, self._config.window_y)
-            return
+        x, y = self._config.window_x, self._config.window_y
+        if x is not None and y is not None:
+            # 저장된 위치가 마지막 실행 이후 디스플레이 레이아웃이 바뀌어 화면 밖일 수 있다 --
+            # 이동 전에 유효성을 검사해 펫이 화면 밖에 갇히거나
+            # Qt의 "알려진 화면 외부" 경고가 발생하지 않게 한다.
+            rect = QRect(x, y, self.width(), self.height())
+            if any(
+                s.availableGeometry().intersects(rect)
+                for s in QApplication.screens()
+            ):
+                self.move(x, y)
+                return
         screen = QApplication.primaryScreen().availableGeometry()
         self.move(screen.center().x() - self.width() // 2, screen.top())
 
-    # ---- mouse: drag to move, right-click for menu ----
+    def _snap_to_edge(self) -> None:
+        """가까운 화면 가장자리에 펫을 딱 붙인다."""
+        screen = self.screen() or QApplication.primaryScreen()
+        area = screen.availableGeometry()
+        x, y = self.x(), self.y()
+        right = area.left() + area.width() - self.width()
+        bottom = area.top() + area.height() - self.height()
+
+        if abs(x - area.left()) <= SNAP_THRESHOLD:
+            x = area.left()
+        elif abs(x - right) <= SNAP_THRESHOLD:
+            x = right
+        if abs(y - area.top()) <= SNAP_THRESHOLD:
+            y = area.top()
+        elif abs(y - bottom) <= SNAP_THRESHOLD:
+            y = bottom
+        self.move(x, y)
+
+    def _save_position(self) -> None:
+        self._config.window_x = self.x()
+        self._config.window_y = self.y()
+        self._config.save()
+
+    # ---- 마우스: 드래그로 이동, 더블클릭으로 설정, 우클릭 메뉴 ----
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_offset = event.globalPosition().toPoint() - self.pos()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def mouseMoveEvent(self, event) -> None:
         if self._drag_offset is not None:
@@ -150,9 +188,17 @@ class PetWindow(QWidget):
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton and self._drag_offset is not None:
             self._drag_offset = None
-            self._config.window_x = self.x()
-            self._config.window_y = self.y()
-            self._config.save()
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            self._snap_to_edge()
+            self._save_position()
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            # 더블클릭은 트레이 아이콘을 찾거나 움직이는 펫을 우클릭하는 것보다
+            # 설정에 접근하기 편한 방법이다.
+            self._drag_offset = None
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            self._on_right_click()
 
 
 def _clamp_scale(scale: float) -> float:

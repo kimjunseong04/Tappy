@@ -1,11 +1,10 @@
-"""Reusable widgets: a platform-native window base and a toggle switch.
+"""재사용 가능한 위젯: 플랫폼 네이티브 창 베이스와 토글 스위치.
 
-`GlassWindow` keeps the native window frame on every OS and picks the
-backdrop per platform:
-  - macOS: real Tahoe "Liquid Glass" via pyqt-liquidglass.
-  - Windows: a Windows 11 Mica backdrop via win32mica (opaque native
-    window as the fallback on Windows 10 / when the library is missing).
-  - Other: a plain native window.
+`GlassWindow`는 모든 OS에서 네이티브 창 프레임을 유지하고 플랫폼별 배경을 선택한다:
+  - macOS: pyqt-liquidglass를 통한 실제 Tahoe "Liquid Glass".
+  - Windows: win32mica를 통한 Windows 11 Mica 배경 (Windows 10 또는 라이브러리 없을 때는
+    불투명 네이티브 창으로 대체).
+  - 기타: 일반 네이티브 창.
 """
 
 import sys
@@ -20,7 +19,15 @@ from PyQt6.QtCore import (
     pyqtSignal,
 )
 from PyQt6.QtGui import QColor, QPainter
-from PyQt6.QtWidgets import QFrame, QMainWindow, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from .ui_style import SWITCH_ON, colors
 
@@ -34,14 +41,14 @@ def _lerp(c1: QColor, c2: QColor, t: float) -> QColor:
 
 
 class GlassWindow(QMainWindow):
-    """A native window with a platform-appropriate translucent backdrop.
+    """플랫폼에 맞는 반투명 배경을 가진 네이티브 창.
 
-    A QMainWindow (not a bare QWidget) is used because pyqt-liquidglass'
-    glass injection is most reliable when the content view has a superview --
-    otherwise it falls back to a fragile content-view swap.
+    pyqt-liquidglass의 유리 주입은 콘텐츠 뷰에 수퍼뷰가 있을 때 가장 안정적이므로
+    QWidget 대신 QMainWindow를 사용한다 -- 그렇지 않으면 불안정한 콘텐츠 뷰 교체로
+    대체(fallback)되어 창이 내용 없는 덩어리로 렌더링된다.
 
-    Subclasses build their content into ``self.body``; the controller calls
-    ``present()`` (not ``show()``) so the backdrop is applied at the right time.
+    서브클래스는 ``self.body``에 콘텐츠를 구성하며, 컨트롤러는
+    배경이 적절한 시점에 적용되도록 ``show()`` 대신 ``present()``를 호출한다.
     """
 
     def __init__(self, title: str):
@@ -56,11 +63,11 @@ class GlassWindow(QMainWindow):
 
     @staticmethod
     def titlebar_clearance() -> int:
-        """Top padding the content needs to clear the window controls.
+        """콘텐츠가 창 컨트롤을 가리지 않기 위한 상단 패딩.
 
-        macOS overlays the traffic lights on a full-size content view, so the
-        content must leave room. Windows/Linux have a separate native title
-        bar, so only a small breathing margin is needed.
+        macOS는 트래픽 라이트를 전체 크기 콘텐츠 뷰 위에 오버레이하므로
+        콘텐츠가 공간을 비워야 한다. Windows/Linux는 별도 네이티브 타이틀바가 있으므로
+        최소한의 여백만 필요하다.
         """
         return 44 if sys.platform == "darwin" else 14
 
@@ -68,8 +75,7 @@ class GlassWindow(QMainWindow):
         if sys.platform == "darwin":
             import pyqt_liquidglass as glass
 
-            # Configures the NSWindow (transparent titlebar, full-size content)
-            # and shows the window.
+            # NSWindow를 구성(투명 타이틀바, 전체 크기 콘텐츠)하고 창을 표시한다.
             glass.prepare_window_for_glass(self)
         else:
             self.show()
@@ -77,22 +83,22 @@ class GlassWindow(QMainWindow):
         self.activateWindow()
         if not self._effect_applied:
             self._effect_applied = True
-            # Let the layout settle before injecting the native backdrop.
+            # 레이아웃이 안정된 후 네이티브 배경을 주입한다.
             QTimer.singleShot(60, self._apply_effect)
 
     def _apply_effect(self) -> None:
         if sys.platform == "darwin":
             import pyqt_liquidglass as glass
 
-            # Leave the traffic lights at their native position -- repositioning
-            # them with setup_traffic_lights_inset() clipped them against the
-            # rounded window corner. titlebar_clearance() keeps content clear.
+            # 트래픽 라이트를 네이티브 위치에 그대로 둔다 --
+            # setup_traffic_lights_inset()으로 재배치하면 둥근 창 모서리에서 잘린다.
+            # titlebar_clearance()로 콘텐츠가 가려지지 않게 한다.
             glass.apply_glass_to_window(self)
         elif sys.platform == "win32":
             self._apply_mica()
 
     def _apply_mica(self) -> None:
-        """Apply a Windows 11 Mica backdrop; stay opaque on any failure."""
+        """Windows 11 Mica 배경을 적용한다; 실패 시 불투명 상태 유지."""
         try:
             from win32mica import ApplyMica, MicaStyle, MicaTheme
 
@@ -104,14 +110,14 @@ class GlassWindow(QMainWindow):
             )
             self.update()
         except Exception:
-            # Windows 10, win32mica missing, or an unsupported build: fall
-            # back to the plain (theme-aware) opaque native window.
+            # Windows 10, win32mica 없음, 또는 미지원 빌드:
+            # 일반(테마 인식) 불투명 네이티브 창으로 대체.
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
             self.update()
 
 
 class ToggleSwitch(QWidget):
-    """An animated macOS-style on/off switch."""
+    """애니메이션이 있는 macOS 스타일 온/오프 스위치."""
 
     toggled = pyqtSignal(bool)
 
@@ -178,3 +184,67 @@ def divider() -> QFrame:
     line.setFixedHeight(1)
     line.setStyleSheet(f"background: {colors()['divider']}; border: none;")
     return line
+
+
+class PermissionCard(QFrame):
+    """환영·설정 창이 공유하는 macOS 입력 모니터링 요청 카드.
+
+    두 가지 시각 상태 -- 권한이 필요할 때 주황색 프롬프트 + 허용 버튼,
+    허용됐을 때 차분한 확인 표시. ``set_granted``가 제자리에서 모핑하므로
+    실시간 허용 시 주변 레이아웃이 재배치되지 않는다.
+    """
+
+    def __init__(self, on_request, parent=None):
+        super().__init__(parent)
+        self.setObjectName("permcard")
+        h = QHBoxLayout(self)
+        h.setContentsMargins(14, 13, 13, 13)
+        h.setSpacing(12)
+
+        self._icon = QLabel()
+        self._icon.setStyleSheet("font-size: 18px;")
+        h.addWidget(self._icon, 0, Qt.AlignmentFlag.AlignTop)
+
+        text = QVBoxLayout()
+        text.setSpacing(3)
+        self._head = QLabel()
+        self._head.setProperty("klass", "title")
+        self._sub = QLabel()
+        self._sub.setProperty("klass", "rowsub")
+        self._sub.setWordWrap(True)
+        text.addWidget(self._head)
+        text.addWidget(self._sub)
+        h.addLayout(text, 1)
+
+        self._button = QPushButton("허용")
+        self._button.setProperty("klass", "primary")
+        self._button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._button.clicked.connect(on_request)
+        h.addWidget(self._button, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        self.set_granted(False)
+
+    def set_granted(self, granted: bool) -> None:
+        if granted:
+            self.setStyleSheet(
+                "#permcard { background: rgba(52,199,89,0.15);"
+                " border: 1px solid rgba(52,199,89,0.42); border-radius: 14px; }"
+            )
+            self._icon.setText("✅")
+            self._head.setText("입력 모니터링 허용됨")
+            self._head.setStyleSheet(f"color: {SWITCH_ON};")
+            self._sub.setText("이제 타이핑에 맞춰 캐릭터가 반응해요.")
+            self._button.setVisible(False)
+        else:
+            self.setStyleSheet(
+                "#permcard { background: rgba(255,159,10,0.16);"
+                " border: 1px solid rgba(255,159,10,0.4); border-radius: 14px; }"
+            )
+            self._icon.setText("⌨️")
+            self._head.setText("입력 모니터링 권한이 필요해요")
+            self._head.setStyleSheet("")
+            self._sub.setText(
+                "타이핑 속도를 감지하려면 권한이 필요해요. "
+                "'허용'을 누르면 시스템 창이 떠요."
+            )
+            self._button.setVisible(True)
