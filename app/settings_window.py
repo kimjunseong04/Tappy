@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .keyboard_monitor import macos_accessibility_trusted, open_accessibility_settings
-from .ui_style import ACCENT, DANGER, SWITCH_ON, WARNING, colors
+from .ui_style import ACCENT, DANGER, SWITCH_ON, WARNING, colors, content_bg
 from .widgets import GlassWindow, ToggleSwitch, divider
 
 _FILE_FILTER = "이미지 (*.gif *.png *.webp *.jpg *.jpeg *.bmp)"
@@ -161,14 +161,19 @@ class SettingsWindow(GlassWindow):
             titlebar.setFixedHeight(self.titlebar_clearance())
         self.body.addWidget(titlebar)
 
+        # On Windows the viewport/content must be opaque, not transparent --
+        # a transparent child on the Mica window leaves ghost trails when the
+        # scroll area blits on scroll. content_bg() resolves this per platform.
+        bg = content_bg()
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.viewport().setStyleSheet("background: transparent;")
+        scroll.viewport().setStyleSheet(f"background: {bg};")
 
         content = QWidget()
-        content.setStyleSheet("background: transparent;")
+        content.setStyleSheet(f"background: {bg};")
         v = QVBoxLayout(content)
         v.setContentsMargins(24, 2, 24, 22)
         v.setSpacing(20)

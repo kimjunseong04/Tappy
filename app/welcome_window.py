@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .paths import assets_dir
+from .ui_style import content_bg
 from .widgets import GlassWindow
 
 _FEATURES = [
@@ -48,7 +49,10 @@ class WelcomeWindow(GlassWindow):
         self._anims: list[QParallelAnimationGroup] = []
 
         content = QWidget()
-        content.setStyleSheet("background: transparent;")
+        # Opaque on Windows -- a transparent child on the Mica window leaves
+        # ghost trails when widgets repaint/move; transparent on macOS so the
+        # glass shows through. See ui_style.content_bg.
+        content.setStyleSheet(f"background: {content_bg()};")
         v = QVBoxLayout(content)
         # top margin clears the window controls (overlaid on macOS)
         v.setContentsMargins(40, self.titlebar_clearance() + 4, 40, 32)
