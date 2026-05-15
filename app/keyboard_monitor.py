@@ -180,6 +180,8 @@ class KeyboardMonitor:
         self.start()
 
     def _on_press(self, key) -> None:
+        if key == keyboard.Key.backspace:
+            return
         now = time.monotonic()
         with self._lock:
             self._timestamps.append(now)
