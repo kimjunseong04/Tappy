@@ -206,15 +206,17 @@ def extract_asset(zip_path: Path, dest_dir: Path) -> Path:
         app = dest_dir / "Tappy.app"
         if not app.is_dir():
             raise UpdateError("업데이트 파일 구조가 올바르지 않아요.")
-        # `ditto`는 실행 비트를 보존하지만, 실행 불가능한 런처는 조용히 재실행에 실패할 수 있다 -- 보험용.
-        launcher = app / "Contents" / "MacOS" / "Tappy"
-        if launcher.exists():
-            launcher.chmod(
-                launcher.stat().st_mode
-                | stat.S_IXUSR
-                | stat.S_IXGRP
-                | stat.S_IXOTH
-            )
+        # Contents/MacOS 내 모든 파일에 실행 권한 부여 — zip 추출 시 실행 비트가 소실될 수 있다.
+        macos_dir = app / "Contents" / "MacOS"
+        if macos_dir.is_dir():
+            for binary in macos_dir.iterdir():
+                if binary.is_file():
+                    binary.chmod(
+                        binary.stat().st_mode
+                        | stat.S_IXUSR
+                        | stat.S_IXGRP
+                        | stat.S_IXOTH
+                    )
         return app
     folder = dest_dir / "Tappy"
     if not folder.is_dir():
@@ -225,9 +227,10 @@ def extract_asset(zip_path: Path, dest_dir: Path) -> Path:
 def _make_staging_dir() -> Path:
     """다운로드·추출용 임시 디렉터리를 생성한다.
 
-    최종 교체가 빠른 원자적 동일 볼륨 rename이 되도록 설치된 앱 옆에 배치한다;
-    쓰기가 불가능하면 시스템 임시 디렉터리로 대체한다 (교체 스크립트의 rename 기반 롤백이
-    중간에 실패한 크로스 볼륨 이동을 처리한다).
+    최종 교체가 빠른 원자적 동일 볼륨 rename이 되도록 설치된 앱 옆에 배치한다.
+    쓰기가 불가능한 경우에만 시스템 임시 디렉터리로 대체한다 -- 단, 시스템 temp가
+    설치 경로와 다른 볼륨에 있으면 교체 스크립트의 mv/move가 EXDEV로 실패할 수 있다.
+    이 경우 교체 스크립트(sh/bat)가 cp+rm 폴백 없이 실패하며 앱이 재시작되지 않는다.
     """
     installed = installed_app_path()
     if installed is not None:
@@ -264,23 +267,66 @@ while kill -0 "$PID" 2>/dev/null; do
     i=$((i + 1))
 done
 
+# mv가 크로스볼륨(EXDEV)이면 cp -R + rm으로 폴백하는 이동 함수
+move_path() {
+    src="$1"
+    dst="$2"
+    if mv "$src" "$dst" 2>/dev/null; then
+        return 0
+    fi
+    # EXDEV 대응: 복사 후 원본 삭제
+    if cp -R "$src" "$dst" 2>/dev/null; then
+        rm -rf "$src"
+        return 0
+    fi
+    return 1
+}
+
+# 안정적인 앱 실행: open 실패 시 직접 실행으로 폴백
+launch_app() {
+    target="$1"
+    if [ -d "$target" ]; then
+        open "$target" 2>/dev/null && return 0
+        # open 실패 시 번들 내 실행 파일 직접 실행
+        launcher="$target/Contents/MacOS/Tappy"
+        if [ -x "$launcher" ]; then
+            "$launcher" &
+            return 0
+        fi
+    fi
+    # .bak 위치에서도 시도
+    if [ -d "$target.bak" ]; then
+        open "$target.bak" 2>/dev/null && return 0
+        launcher="$target.bak/Contents/MacOS/Tappy"
+        if [ -x "$launcher" ]; then
+            "$launcher" &
+            return 0
+        fi
+    fi
+    return 1
+}
+
 # 동일 볼륨 원자적 rename으로 기존 번들 백업 (롤백 지점)
 rm -rf "$OLD.bak"
-if ! mv "$OLD" "$OLD.bak"; then
-    open "$OLD" 2>/dev/null
+if ! move_path "$OLD" "$OLD.bak"; then
+    launch_app "$OLD"
     exit 1
 fi
 # 새 번들을 제자리로 이동; 실패 시 부분 파일을 제거하고 롤백
-if ! mv "$NEW" "$OLD"; then
+if ! move_path "$NEW" "$OLD"; then
     rm -rf "$OLD"
-    mv "$OLD.bak" "$OLD"
-    open "$OLD" 2>/dev/null
+    if ! move_path "$OLD.bak" "$OLD"; then
+        # 롤백도 실패 — .bak에서 직접 실행 시도
+        launch_app "$OLD"
+        exit 1
+    fi
+    launch_app "$OLD"
     exit 1
 fi
 # 미서명 빌드가 Gatekeeper에 막히지 않도록 quarantine 플래그 제거
 xattr -dr com.apple.quarantine "$OLD" 2>/dev/null
 rm -rf "$OLD.bak"
-open "$OLD"
+launch_app "$OLD"
 """
 
 _SWAP_BAT = r"""@echo off
@@ -289,30 +335,39 @@ set "OLD=%~2"
 set "NEW=%~3"
 set "STAGING=%~4"
 
+rem 최대 20초(20회 x 1초)간 프로세스 종료를 대기한다.
+rem tasklist은 PID가 없어도 errorlevel 0을 돌려주는 Windows 버전이 있으므로
+rem /fo csv 출력에서 PID 문자열 존재 여부로 이중 확인한다.
 set /a i=0
 :wait
-tasklist /fi "PID eq %PID%" 2>nul | find "%PID%" >nul
+tasklist /fi "PID eq %PID%" /fo csv /nh 2>nul | find "%PID%" >nul 2>&1
 if errorlevel 1 goto exited
 set /a i+=1
-if %i% geq 100 goto cleanup
+if %i% geq 20 goto cleanup
 timeout /t 1 /nobreak >nul
 goto wait
 
 :exited
-rem 추가 대기 -- Windows는 .exe/.dll 잠금을 느리게 해제한다
-timeout /t 1 /nobreak >nul
+rem .exe/.dll 잠금이 완전히 해제될 때까지 3초 대기 (1초로는 부족한 사례 다수 보고됨)
+timeout /t 3 /nobreak >nul
 if exist "%OLD%.old" rmdir /s /q "%OLD%.old"
 move "%OLD%" "%OLD%.old" >nul
 if errorlevel 1 (
     start "" "%OLD%\Tappy.exe"
     goto cleanup
 )
+
+rem 새 폴더 이동 -- 크로스 볼륨이면 move가 실패하므로 xcopy로 재시도한다.
 move "%NEW%" "%OLD%" >nul
 if errorlevel 1 (
-    rmdir /s /q "%OLD%" 2>nul
-    move "%OLD%.old" "%OLD%" >nul
-    start "" "%OLD%\Tappy.exe"
-    goto cleanup
+    xcopy "%NEW%" "%OLD%\" /E /I /H /Y >nul 2>&1
+    if errorlevel 1 (
+        rmdir /s /q "%OLD%" 2>nul
+        move "%OLD%.old" "%OLD%" >nul
+        start "" "%OLD%\Tappy.exe"
+        goto cleanup
+    )
+    rmdir /s /q "%NEW%" 2>nul
 )
 rmdir /s /q "%OLD%.old"
 start "" "%OLD%\Tappy.exe"
@@ -456,7 +511,9 @@ class UpdateChecker(QObject):
         try:
             staging = _make_staging_dir()
             zip_path = download_asset(release, staging, self._emit_progress)
-            extracted = extract_asset(zip_path, staging / "new")
+            new_dir = staging / "new"
+            new_dir.mkdir(parents=True, exist_ok=True)
+            extracted = extract_asset(zip_path, new_dir)
         except UpdateError as error:
             if staging is not None:
                 shutil.rmtree(staging, ignore_errors=True)
