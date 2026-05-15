@@ -16,6 +16,11 @@
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat&logo=python&logoColor=white)
 ![PyQt6](https://img.shields.io/badge/PyQt6-41CD52?style=flat&logo=qt&logoColor=white)
 
+<br/>
+
+[![macOS 다운로드](https://img.shields.io/badge/다운로드-macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/kimjunseong04/Tappy/releases/latest/download/Tappy-macOS.zip)
+[![Windows 다운로드](https://img.shields.io/badge/다운로드-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/kimjunseong04/Tappy/releases/latest/download/Tappy-Windows.zip)
+
 </div>
 
 ---
