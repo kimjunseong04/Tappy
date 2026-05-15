@@ -3,13 +3,13 @@
 
 class SpeedModel:
     # 초당 키 입력 횟수(keys/sec) 중 최고 속도 재생에 해당하는 값.
-    MAX_KPS = 8.0
+    MAX_KPS = 12.0
 
     def __init__(
         self,
         min_fps: float,
         max_fps: float,
-        attack: float = 0.6,
+        attack: float = 0.35,
         release: float = 0.18,
     ):
         self.min_fps = min_fps
