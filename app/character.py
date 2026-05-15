@@ -1,4 +1,4 @@
-"""A character is a named sequence of animation frames."""
+"""캐릭터는 이름과 애니메이션 프레임 시퀀스로 구성된다."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,10 +22,10 @@ class Character:
 
 
 def load_character(char_dir: Path) -> Character | None:
-    """Load a character from a directory.
+    """디렉터리에서 캐릭터를 로드한다.
 
-    The directory holds either a single animated file (e.g. ``source.gif``)
-    or a numbered image sequence (``frame_00.png`` ...).
+    디렉터리에는 단일 애니메이션 파일(예: ``source.gif``) 또는
+    번호가 매겨진 이미지 시퀀스(``frame_00.png`` ...)가 들어있다.
     """
     if not char_dir.is_dir():
         return None

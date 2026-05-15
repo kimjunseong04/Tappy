@@ -1,10 +1,10 @@
-"""Cross-platform "launch at login" toggle.
+"""크로스 플랫폼 "로그인 시 실행" 토글.
 
-Windows: an entry under HKCU ...\\CurrentVersion\\Run.
-macOS:   a LaunchAgent plist in ~/Library/LaunchAgents.
+Windows: HKCU ...\\CurrentVersion\\Run 레지스트리 항목.
+macOS:   ~/Library/LaunchAgents의 LaunchAgent plist.
 
-The registered command points at the current Python interpreter plus this
-project's main.py. For a real distributable, repoint it at a packaged binary.
+등록된 명령은 현재 Python 인터프리터와 이 프로젝트의 main.py를 가리킨다.
+패키징된 배포본에서는 패키지 바이너리를 가리키도록 변경해야 한다.
 """
 
 import sys
@@ -97,7 +97,7 @@ def _win_is_enabled() -> bool:
         return False
 
 
-# ---- public API ----
+# ---- 공개 API ----
 def enable() -> None:
     if sys.platform == "darwin":
         _mac_enable()
