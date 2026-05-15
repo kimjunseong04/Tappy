@@ -1,4 +1,4 @@
-"""Persisted user settings, stored as JSON in the user data directory."""
+"""사용자 설정을 JSON으로 영속 저장한다. 저장 위치는 OS별 사용자 데이터 디렉터리."""
 
 import json
 from dataclasses import asdict, dataclass
@@ -17,6 +17,9 @@ class Config:
     autostart: bool = False
     seen_welcome: bool = False
     char_scale: float = 1.0
+    # 마지막으로 성공한 업데이트 확인의 에포크 초 -- 무음 시작 확인을 제한한다.
+    # 하위 호환: `load()`가 미지의 키를 필터링하고, 이전 설정 파일은 이 기본값을 사용한다.
+    last_update_check: float = 0.0
 
     @classmethod
     def load(cls) -> "Config":
